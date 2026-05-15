@@ -30,6 +30,7 @@ export class PeerNet {
   peer: PeerType | null = null;
   conns: Map<string, DataConnection> = new Map();
   handlers: PeerHandlers;
+  private closed = false;
 
   constructor(handlers: PeerHandlers) {
     this.handlers = handlers;
@@ -39,7 +40,7 @@ export class PeerNet {
     const { Peer } = await loadPeerJs();
     this.peer = new Peer(peerIdFor(code));
     this.peer.on("open", (id) => this.handlers.onOpen?.(id));
-    this.peer.on("error", (err) => this.handlers.onError?.(err));
+    this.peer.on("error", (err) => { if (!this.closed) this.handlers.onError?.(err); });
     this.peer.on("connection", (conn) => {
       this.attachConn(conn);
     });
@@ -52,29 +53,43 @@ export class PeerNet {
       this.handlers.onOpen?.(id);
       const conn = this.peer!.connect(peerIdFor(code), { reliable: true });
       this.attachConn(conn);
+      const timer = setTimeout(() => {
+        if (this.closed) return;
+        if (!conn.open) {
+          const err = new Error("Host unreachable") as Error & { type: string };
+          err.type = "peer-unavailable";
+          this.handlers.onError?.(err);
+        }
+      }, 8000);
+      conn.on("open", () => clearTimeout(timer));
+      conn.on("close", () => clearTimeout(timer));
     });
-    this.peer.on("error", (err) => this.handlers.onError?.(err));
+    this.peer.on("error", (err) => { if (!this.closed) this.handlers.onError?.(err); });
   }
 
   private attachConn(conn: DataConnection) {
     conn.on("open", () => {
+      if (this.closed) return;
       this.conns.set(conn.peer, conn);
       this.handlers.onConnect?.(conn);
     });
     conn.on("data", (data) => {
+      if (this.closed) return;
       try {
         const msg = (typeof data === "string" ? JSON.parse(data) : data) as PeerMessage;
         this.handlers.onMessage?.(msg, conn);
-      } catch (e) {
+      } catch {
         // ignore
       }
     });
     conn.on("close", () => {
       this.conns.delete(conn.peer);
+      if (this.closed) return;
       this.handlers.onDisconnect?.(conn);
     });
     conn.on("error", () => {
       this.conns.delete(conn.peer);
+      if (this.closed) return;
       this.handlers.onDisconnect?.(conn);
     });
   }
@@ -89,6 +104,7 @@ export class PeerNet {
   }
 
   close() {
+    this.closed = true;
     for (const c of this.conns.values()) {
       try { c.close(); } catch {}
     }

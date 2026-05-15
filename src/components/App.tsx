@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { ActionsSidebar, Column, Connectors } from "./Board";
-import { ActionComposeModal, ExportModal, HostSetupModal, JoinModal, ShareModal } from "./Modals";
+import { ActionComposeModal, ExportModal, HostSetupModal, JoinModal, SessionEndedModal, ShareModal } from "./Modals";
 import PalettePopover from "./PalettePopover";
 import {
   buildActionsChat,
@@ -66,7 +66,17 @@ export default function App() {
   const [composingActionFor, setComposingActionFor] = useState<string | null>(null);
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null);
   const [actionsCollapsed, setActionsCollapsed] = useState(true);
+  const [showEnded, setShowEnded] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
   const prevActionCountRef = useRef(0);
+  const prevSharingRef = useRef<boolean | null>(null);
+  const endedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearEndedTimer = useCallback(() => {
+    if (endedTimerRef.current) {
+      clearTimeout(endedTimerRef.current);
+      endedTimerRef.current = null;
+    }
+  }, []);
   const [pendingFocusCol, setPendingFocusCol] = useState<string | null>(null);
 
   const joinCode = useMemo(() => {
@@ -96,6 +106,19 @@ export default function App() {
     prevActionCountRef.current = board.actions.length;
   }, [board]);
   useEffect(() => { sessionRef.current = session; }, [session]);
+  useEffect(() => {
+    if (!session || !me) return;
+    const sharing = !!session.sharing;
+    const prev = prevSharingRef.current;
+    if (!me.isHost && prev === true && sharing === false) {
+      setShowEnded(true);
+    }
+    if (!me.isHost && sharing === true) {
+      clearEndedTimer();
+      setShowEnded(false);
+    }
+    prevSharingRef.current = sharing;
+  }, [session, me]);
   useEffect(() => { participantsRef.current = participants; }, [participants]);
   useEffect(() => { meRef.current = me; }, [me]);
 
@@ -189,8 +212,10 @@ export default function App() {
 
   useEffect(() => {
     if (mode !== "board") return;
-    if (!session?.sharing) return;
     if (!me) return;
+    // Host gates on sharing; guest always attempts so they can rejoin when host resumes.
+    if (me.isHost && !session?.sharing) return;
+    if (!me.isHost && !session?.code) return;
 
     const net = new PeerNet({
       onMessage: (msg, conn) => {
@@ -239,6 +264,7 @@ export default function App() {
       },
       onConnect: (conn) => {
         if (!me.isHost) {
+          clearEndedTimer();
           // guest: introduce ourselves
           const meNow = meRef.current!;
           const p: Participant = {
@@ -247,23 +273,52 @@ export default function App() {
           net.send({ type: "hello", participant: p }, conn);
         }
       },
+      onDisconnect: () => {
+        if (meRef.current?.isHost) return;
+        // Debounce: host page refresh briefly drops the conn. Only show the
+        // ended modal if we can't reconnect within a short grace period.
+        clearEndedTimer();
+        endedTimerRef.current = setTimeout(() => setShowEnded(true), 4000);
+        // Trigger immediate reconnect attempt so a fast host refresh resolves
+        // before the modal would appear.
+        setRetryTick((n) => n + 1);
+      },
       onError: (err) => {
         // eslint-disable-next-line no-console
         console.warn("peer error", err);
+        const t = (err as { type?: string }).type;
+        if (!meRef.current?.isHost && (t === "peer-unavailable" || t === "network" || t === "server-error")) {
+          // Debounce like onDisconnect — a fresh host page-load may briefly
+          // be unavailable before its peer is up again.
+          if (!endedTimerRef.current) {
+            endedTimerRef.current = setTimeout(() => setShowEnded(true), 4000);
+          }
+          // Schedule another reconnect attempt shortly.
+          setTimeout(() => setRetryTick((n) => n + 1), 1500);
+        }
       },
     });
     peerRef.current = net;
 
+    const code = session?.code;
+    if (!code) return;
     (async () => {
-      if (me.isHost) await net.startHost(session.code);
-      else await net.startGuest(session.code);
+      if (me.isHost) await net.startHost(code);
+      else await net.startGuest(code);
     })();
 
     return () => {
       net.close();
       peerRef.current = null;
     };
-  }, [mode, session?.code, session?.sharing, me, broadcastState]);
+  }, [mode, session?.code, session?.sharing, me, broadcastState, retryTick]);
+
+  // While guest is in "session ended" state, retry connecting every 5s.
+  useEffect(() => {
+    if (!showEnded || !me || me.isHost) return;
+    const t = setInterval(() => setRetryTick((n) => n + 1), 5000);
+    return () => clearInterval(t);
+  }, [showEnded, me]);
 
   /* ─── Board mutators ─────────────────────────────────────────────── */
   const updateBoard = useCallback(
@@ -853,7 +908,15 @@ export default function App() {
           host={{ name: me.name, color: me.color, initial: me.initial }}
           participants={participants.filter((p) => p.id !== me.id)}
           sharing={!!session.sharing}
-          onToggleSharing={() => updateSession((s) => ({ ...s, sharing: !s.sharing }))}
+          onToggleSharing={() => {
+            if (!session) return;
+            const next = { ...session, sharing: !session.sharing };
+            // Send to peers BEFORE state change so the cleanup of the peer
+            // effect (triggered by sharing flipping false) can't race us.
+            peerRef.current?.send({ type: "session", session: next });
+            sessionRef.current = next;
+            setSession(next);
+          }}
           onClose={() => setShowShare(false)}
         />
       )}
@@ -868,6 +931,7 @@ export default function App() {
           onClose={() => setShowExport(false)}
         />
       )}
+      {showEnded && <SessionEndedModal />}
       {composingActionFor && board.cards[composingActionFor] && (
         <ActionComposeModal
           parentCard={board.cards[composingActionFor]}
