@@ -131,6 +131,11 @@ export default function App() {
           setMe(p.me);
           setSession(rec.session);
           setBoard(rec.board);
+          if (p.me.isHost) {
+            setParticipants([
+              { id: p.me.id, name: p.me.name, color: p.me.color, initial: p.me.initial },
+            ]);
+          }
           setMode("board");
           return;
         }
@@ -658,6 +663,7 @@ export default function App() {
     setMe(newMe);
     setSession(newSession);
     setBoard(seedBoard());
+    setParticipants([{ id: newMe.id, name: newMe.name, color: newMe.color, initial: newMe.initial }]);
     setMode("board");
   };
 
