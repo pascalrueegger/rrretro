@@ -18,7 +18,7 @@ import {
   seedBoard,
 } from "@/lib/board";
 import { applyTheme, nameColor, rerollRandom } from "@/lib/theme";
-import { getPrefs, loadGuestMe, loadSession, saveGuestMe, saveSession, setPref } from "@/lib/db";
+import { getPrefs, loadGuestMe, loadSession, resetAll, saveGuestMe, saveSession, setPref } from "@/lib/db";
 import { initials, randCode, uid } from "@/lib/util";
 import { PeerNet, type PeerMessage } from "@/lib/peer";
 import type {
@@ -667,6 +667,27 @@ export default function App() {
     setMode("board");
   };
 
+  const onNewBoard = async () => {
+    if (typeof window !== "undefined" &&
+        !window.confirm("Start a new board? This will discard the current retro.")) {
+      return;
+    }
+    try { await resetAll(); } catch {}
+    peerRef.current?.close();
+    peerRef.current = null;
+    setShowShare(false);
+    setShowExport(false);
+    setComposingActionFor(null);
+    setHoveredLinkId(null);
+    setActionsCollapsed(true);
+    setParticipants([]);
+    setBoard(null);
+    setSession(null);
+    setMe(null);
+    prevActionCountRef.current = 0;
+    setMode("host-setup");
+  };
+
   const onJoin = ({ name }: { name: string }) => {
     const color = nameColor(name);
     const newMe: Me = { id: uid("u"), name, color, initial: initials(name), isHost: false };
@@ -749,6 +770,20 @@ export default function App() {
               {session.sharing
                 ? <><span className="share-dot on" /> Share</>
                 : <><span className="share-dot off" /> Sharing off</>}
+            </button>
+          )}
+          {me.isHost && (
+            <button type="button"
+                    className="btn btn-ghost btn-icon"
+                    title="New board (resets current retro)"
+                    aria-label="New board"
+                    onClick={onNewBoard}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
             </button>
           )}
         </div>

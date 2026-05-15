@@ -76,3 +76,7 @@ export async function loadGuestMe(code: string): Promise<Me | undefined> {
   const p = await db().prefs.get("me");
   return p?.guestMeByCode?.[code];
 }
+
+export async function resetAll() {
+  await Promise.all([db().sessions.clear(), db().prefs.clear()]);
+}
