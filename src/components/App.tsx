@@ -36,13 +36,15 @@ const DEFAULT_TWEAKS: Tweaks = { theme: "light", density: "regular", flavor: "sw
 type Mode = "loading" | "host-setup" | "join" | "board";
 
 function SessionTitleInput({
-  value, onChange,
-}: { value: string; onChange: (v: string) => void }) {
+  value, onChange, readOnly,
+}: { value: string; onChange: (v: string) => void; readOnly?: boolean }) {
   return (
     <input
       className="session"
       value={value}
       placeholder="Untitled retro"
+      readOnly={readOnly}
+      tabIndex={readOnly ? -1 : 0}
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur();
@@ -378,7 +380,6 @@ export default function App() {
         [id]: {
           id, columnId, text,
           author: me.name, authorColor: me.color,
-          createdAt: Date.now(),
           comments: [],
           reactions: { up: [], celebrate: [], gratitude: [] },
           parentCardId: null,
@@ -437,7 +438,6 @@ export default function App() {
       const cm = {
         id: uid("cm"), text,
         author: me.name, authorColor: me.color,
-        createdAt: Date.now(),
       };
       return { ...b, cards: { ...b.cards, [cardId]: { ...c, comments: [...c.comments, cm] } } };
     });
@@ -466,7 +466,6 @@ export default function App() {
       const action: CardT = {
         id, columnId: "actions", text,
         author: me.name, authorColor: me.color,
-        createdAt: Date.now(),
         comments: [],
         reactions: { up: [], celebrate: [], gratitude: [] },
         parentCardId: parentId,
@@ -831,6 +830,7 @@ export default function App() {
           <span className="name">RRRetro</span>
           <SessionTitleInput
             value={session.title}
+            readOnly={!me.isHost}
             onChange={(v) => updateSession((s) => ({ ...s, title: v }))}
           />
         </div>

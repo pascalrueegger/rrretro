@@ -7,7 +7,6 @@ export interface Comment {
   text: string;
   author: string;
   authorColor: string;
-  createdAt: number;
 }
 
 export interface Card {
@@ -16,7 +15,6 @@ export interface Card {
   text: string;
   author: string;
   authorColor: string;
-  createdAt: number;
   comments: Comment[];
   reactions: Reactions;
   parentCardId: string | null;

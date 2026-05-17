@@ -48,7 +48,6 @@
 :root[data-flavor="hand"]     { --font-app: var(--font-hand); --card-fz: 17px; }
 :root[data-flavor="hand"] .col-title,
 :root[data-flavor="hand"] .card-author,
-:root[data-flavor="hand"] .card-time,
 :root[data-flavor="hand"] .actions-title,
 :root[data-flavor="hand"] .bar-brand .name,
 :root[data-flavor="hand"] .modal h2 { font-weight: 400; letter-spacing: 0; }
@@ -60,7 +59,6 @@
 :root[data-flavor="hand"] .col-title      { font-size: 15px; }
 :root[data-flavor="hand"] .col-count      { font-size: 13px; }
 :root[data-flavor="hand"] .card-author    { font-size: 13.5px; }
-:root[data-flavor="hand"] .card-time      { font-size: 12.5px; }
 :root[data-flavor="hand"] .actions-title  { font-size: 13px; }
 :root[data-flavor="hand"] .bar-brand .name{ font-size: 17px; }
 :root[data-flavor="hand"] .bar-brand .session,
@@ -260,13 +258,13 @@ input, textarea { font: inherit; color: inherit; }
 
 .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .card-author { font-size: 11.5px; color: var(--fg-2); font-weight: 500; }
-.card-time { font-size: 10.5px; color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+.card-head-actions { margin-left: auto; display: inline-flex; gap: 2px; }
 .card-body { font-size: var(--card-fz); line-height: 1.45; color: var(--fg); white-space: pre-wrap; word-wrap: break-word; }
 .card-body[contenteditable="true"] { outline: 0; cursor: text; }
 .card-body-input {
   width: 100%; border: 0; outline: 0; background: transparent; resize: none;
   font: inherit; font-size: var(--card-fz); line-height: 1.45;
-  color: var(--fg); padding: 0; min-height: 22px;
+  color: var(--fg); padding: 0; min-height: 22px; overflow: hidden;
 }
 .card-foot { display: flex; align-items: center; gap: 6px; margin-top: 8px; min-height: 20px; }
 

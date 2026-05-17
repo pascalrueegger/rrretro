@@ -15,14 +15,6 @@ export const initials = (n: string) =>
     .map((x) => x[0].toUpperCase())
     .join("");
 
-export function relTime(ts: number) {
-  const d = Date.now() - ts;
-  if (d < 60_000) return "just now";
-  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`;
-  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`;
-  return `${Math.floor(d / 86_400_000)}d`;
-}
-
 export function formatDue(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso + "T00:00:00");

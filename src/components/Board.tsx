@@ -11,37 +11,12 @@ import {
   type ReactNode,
 } from "react";
 import type { BoardState, Card as CardT, Group as GroupT, Me, Participant, ReactionKey } from "@/lib/types";
-import { formatDue, initials, relTime } from "@/lib/util";
-
-const RxnSvg = ({ children, size = 15 }: { children: ReactNode; size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-       stroke="currentColor" strokeWidth="1.6"
-       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    {children}
-  </svg>
-);
-const ThumbUp = ({ size }: { size?: number }) => (
-  <RxnSvg size={size}>
-    <path d="M7 22V11" />
-    <path d="M7 11l3.4-7a2.6 2.6 0 0 1 2.6 2.6V10h5.3a2 2 0 0 1 2 2.4l-1.5 7.6A2 2 0 0 1 16.8 22H7" />
-  </RxnSvg>
-);
-const Confetti = ({ size }: { size?: number }) => (
-  <RxnSvg size={size}>
-    <path d="M3.4 20.6l4.7-12.2 7.5 7.5L3.4 20.6z" />
-    <path d="M9 10.5l5 5" />
-    <path d="M14.5 5l1.2 1.2" />
-    <path d="M18.5 4l-.6 1.8" />
-    <path d="M20 8l1.6.6" />
-    <path d="M17 10.5l1.5-.4" />
-    <path d="M13 3l.6 1.5" />
-  </RxnSvg>
-);
-const Heart = ({ size }: { size?: number }) => (
-  <RxnSvg size={size}>
-    <path d="M12 20.5s-6.7-4.1-8.7-9C1.7 7.6 4.6 4.6 7.6 5.3c1.7.4 2.9 1.6 4.4 3.3 1.5-1.7 2.7-2.9 4.4-3.3 3-.7 5.9 2.3 4.3 6.2-2 4.9-8.7 9-8.7 9z" />
-  </RxnSvg>
-);
+import { formatDue, initials } from "@/lib/util";
+import { Trash } from "./icons/Trash";
+import { ThumbUp } from "./icons/ThumbUp";
+import { Confetti } from "./icons/Confetti";
+import { Heart } from "./icons/Heart";
+import { SpeechBubble } from "./icons/SpeechBubble";
 
 const REACTIONS: { key: ReactionKey; Icon: (p: { size?: number }) => React.ReactElement; label: string }[] = [
   { key: "up", Icon: ThumbUp, label: "Upvote" },
@@ -162,7 +137,8 @@ function Card({
   onLinkHover, onCardDropOnCard, onCardDropAdjacent,
   parentColumnId, groupId, registerCardEl,
 }: CardProps) {
-  const [editing, setEditing] = useState(card.text === "");
+  const isAuthor = card.author === me.name;
+  const [editing, setEditing] = useState(card.text === "" && isAuthor);
   const [text, setText] = useState(card.text);
   const [showComments, setShowComments] = useState(false);
   const prevCommentCountRef = useRef(card.comments.length);
@@ -179,6 +155,13 @@ function Card({
 
   useEffect(() => setText(card.text), [card.text]);
   useEffect(() => { if (editing) textRef.current?.focus(); }, [editing]);
+  useLayoutEffect(() => {
+    if (!editing) return;
+    const el = textRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text, editing]);
 
   useLayoutEffect(() => {
     if (cardEl.current) registerCardEl(card.id, cardEl.current);
@@ -320,7 +303,22 @@ function Card({
       <div className="card-head">
         <span className="avatar" style={{ background: card.authorColor }}>{initials(card.author)}</span>
         <span className="card-author">{card.author}</span>
-        <span className="card-time">{relTime(card.createdAt)}</span>
+        {isAuthor && (
+          <span className="card-head-actions">
+            <button type="button" className="foot-btn"
+                    onClick={() => setEditing(true)}
+                    title="Edit card">
+              ✎
+            </button>
+            <button type="button" className="foot-btn"
+                    onClick={() => {
+                      if (window.confirm("Delete this card?")) onDelete(card.id);
+                    }}
+                    title="Delete card">
+              <Trash />
+            </button>
+          </span>
+        )}
       </div>
 
       {editing ? (
@@ -338,7 +336,7 @@ function Card({
           }}
         />
       ) : (
-        <div className="card-body" onDoubleClick={() => setEditing(true)}>{card.text}</div>
+        <div className="card-body" onDoubleClick={() => { if (isAuthor) setEditing(true); }}>{card.text}</div>
       )}
 
       {card.isAction && <ActionMeta card={card} onUpdate={onUpdate} />}
@@ -364,7 +362,7 @@ function Card({
         <button type="button" className="foot-btn"
                 onClick={() => setShowComments((s) => !s)}
                 title="Comments">
-          ✎ {card.comments.length || ""}
+          <SpeechBubble /> {card.comments.length || ""}
         </button>
         {!card.isAction && (
           <button type="button" className="foot-btn"
@@ -475,6 +473,13 @@ function Column(props: ColumnProps) {
   const items = layout[column.id] || [];
 
   useEffect(() => { if (adding) draftRef.current?.focus(); }, [adding]);
+  useLayoutEffect(() => {
+    if (!adding) return;
+    const el = draftRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draftText, adding]);
 
   // Broadcast typing state when draft is open.
   useEffect(() => {
@@ -526,18 +531,23 @@ function Column(props: ColumnProps) {
                value={column.title}
                placeholder="Column title"
                onChange={(e) => onRenameColumn(column.id, e.target.value)} />
-        <span className="col-count">{
-          items.reduce(
+        {(() => {
+          const count = items.reduce(
             (n, it) =>
               n + (it.type === "group" ? (groups[it.id]?.cardIds.length || 0) : 1),
             0
-          )
-        }</span>
-        {!column.locked && (
-          <button type="button" className="btn btn-ghost btn-sm col-menu"
-                  title="Delete column"
-                  onClick={() => onDeleteColumn(column.id)}>×</button>
-        )}
+          );
+          return (
+            <>
+              {count > 0 && <span className="col-count">{count}</span>}
+              {!column.locked && me.isHost && count === 0 && (
+                <button type="button" className="btn btn-ghost btn-sm col-menu"
+                        title="Delete column"
+                        onClick={() => onDeleteColumn(column.id)}>×</button>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       <div className={`col-body ${dragOver ? "drag-over" : ""}`}
