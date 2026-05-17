@@ -9,7 +9,8 @@ export type PeerMessage =
   | { type: "board"; board: BoardState }
   | { type: "session"; session: SessionInfo }
   | { type: "presence"; participants: Participant[] }
-  | { type: "bye"; participantId: string };
+  | { type: "bye"; participantId: string }
+  | { type: "typing"; participant: Participant; columnId: string; active: boolean };
 
 const PEER_ID_PREFIX = "rrretro-v1-";
 export const peerIdFor = (code: string) => `${PEER_ID_PREFIX}${code.toLowerCase()}`;

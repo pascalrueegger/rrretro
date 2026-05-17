@@ -61,6 +61,7 @@ export default function App() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [board, setBoard] = useState<BoardState | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [typingByColumn, setTypingByColumn] = useState<Record<string, Participant[]>>({});
   const [showShare, setShowShare] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [composingActionFor, setComposingActionFor] = useState<string | null>(null);
@@ -219,6 +220,16 @@ export default function App() {
 
     const net = new PeerNet({
       onMessage: (msg, conn) => {
+        if (msg.type === "typing") {
+          setTypingByColumn((prev) => {
+            const cur = prev[msg.columnId] || [];
+            const others = cur.filter((p) => p.id !== msg.participant.id);
+            const next = msg.active ? [...others, msg.participant] : others;
+            return { ...prev, [msg.columnId]: next };
+          });
+          if (me.isHost) net.send(msg); // rebroadcast to all guests
+          return;
+        }
         if (me.isHost) {
           if (msg.type === "hello") {
             setParticipants((prev) => {
@@ -722,6 +733,33 @@ export default function App() {
     setMode("board");
   };
 
+  const broadcastTyping = useCallback((columnId: string, active: boolean) => {
+    const meNow = meRef.current;
+    if (!meNow) return;
+    const participant: Participant = {
+      id: meNow.id, name: meNow.name, color: meNow.color, initial: meNow.initial,
+    };
+    const msg: PeerMessage = { type: "typing", participant, columnId, active };
+    if (meNow.isHost) {
+      peerRef.current?.send(msg);
+    } else {
+      peerRef.current?.send(msg); // guest → host; host will rebroadcast
+    }
+  }, []);
+
+  // Prune typers no longer in the room.
+  useEffect(() => {
+    setTypingByColumn((prev) => {
+      const ids = new Set(participants.map((p) => p.id));
+      const next: typeof prev = {};
+      for (const col of Object.keys(prev)) {
+        const filtered = prev[col].filter((p) => ids.has(p.id));
+        if (filtered.length) next[col] = filtered;
+      }
+      return next;
+    });
+  }, [participants]);
+
   const onNewBoard = async () => {
     if (typeof window !== "undefined" &&
         !window.confirm("Start a new board? This will discard the current retro.")) {
@@ -873,6 +911,8 @@ export default function App() {
                 registerCardEl={registerCardEl}
                 autoFocusTitle={pendingFocusCol === col.id}
                 onTitleFocused={() => setPendingFocusCol(null)}
+                typers={(typingByColumn[col.id] || []).filter((p) => p.id !== me.id)}
+                onTyping={broadcastTyping}
               />
             ))}
             <div className="add-col">

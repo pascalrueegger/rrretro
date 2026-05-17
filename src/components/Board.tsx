@@ -10,7 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import type { BoardState, Card as CardT, Group as GroupT, Me, ReactionKey } from "@/lib/types";
+import type { BoardState, Card as CardT, Group as GroupT, Me, Participant, ReactionKey } from "@/lib/types";
 import { formatDue, initials, relTime } from "@/lib/util";
 
 const RxnSvg = ({ children, size = 15 }: { children: ReactNode; size?: number }) => (
@@ -455,6 +455,8 @@ interface ColumnProps {
   registerCardEl: (id: string, el: HTMLDivElement | null) => void;
   autoFocusTitle: boolean;
   onTitleFocused: () => void;
+  typers: Participant[];
+  onTyping: (columnId: string, active: boolean) => void;
 }
 
 function Column(props: ColumnProps) {
@@ -463,7 +465,7 @@ function Column(props: ColumnProps) {
     onAddCard, onUpdateCard, onAddComment, onReact, onCreateAction, onDeleteCard,
     onRenameColumn, onDeleteColumn, onLinkHover, onCardDropOnCard, onCardDropAdjacent,
     onDropIntoColumn, onUnGroup, onRenameGroup, registerCardEl,
-    autoFocusTitle, onTitleFocused,
+    autoFocusTitle, onTitleFocused, typers, onTyping,
   } = props;
   const [adding, setAdding] = useState(false);
   const [draftText, setDraftText] = useState("");
@@ -473,6 +475,13 @@ function Column(props: ColumnProps) {
   const items = layout[column.id] || [];
 
   useEffect(() => { if (adding) draftRef.current?.focus(); }, [adding]);
+
+  // Broadcast typing state when draft is open.
+  useEffect(() => {
+    if (!adding) return;
+    onTyping(column.id, true);
+    return () => onTyping(column.id, false);
+  }, [adding, column.id, onTyping]);
   useEffect(() => {
     if (autoFocusTitle && titleRef.current) {
       titleRef.current.focus();
@@ -573,6 +582,20 @@ function Column(props: ColumnProps) {
                   registerCardEl={registerCardEl} />
           );
         })}
+
+        {typers.length > 0 && (
+          <div className="col-typing" title={typers.map((t) => t.name).join(", ")}>
+            <span className="col-typing-avatars">
+              {typers.slice(0, 3).map((t) => (
+                <span key={t.id} className="avatar" style={{ background: t.color }}>{t.initial}</span>
+              ))}
+            </span>
+            <span className="col-typing-text">
+              {typers.length === 1 ? `${typers[0].name} is writing` : `${typers.length} people writing`}
+              <span className="col-typing-dots"><i /><i /><i /></span>
+            </span>
+          </div>
+        )}
 
         {adding ? (
           <div className="card" style={{ cursor: "default" }}>
