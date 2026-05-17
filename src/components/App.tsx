@@ -146,7 +146,6 @@ export default function App() {
         setSession(session);
         if (guestMe) {
           setMe(guestMe);
-          setBoard(seedBoard());
           setMode("board");
         } else {
           setMode("join");
@@ -784,7 +783,6 @@ export default function App() {
     const color = nameColor(name);
     const newMe: Me = { id: uid("u"), name, color, initial: initials(name), isHost: false };
     setMe(newMe);
-    setBoard(seedBoard());
     setMode("board");
     if (joinCode) saveGuestMe(joinCode, newMe).catch(() => {});
   };
@@ -815,7 +813,17 @@ export default function App() {
     );
   }
 
-  if (!board || !session || !me) return null;
+  if (!session || !me) return null;
+  if (!board) {
+    return (
+      <div className="scrim">
+        <div className="modal" style={{ textAlign: "center" }}>
+          <h2>Connecting…</h2>
+          <p className="sub">Waiting for the host to sync the board.</p>
+        </div>
+      </div>
+    );
+  }
 
   const md = buildMarkdown(board, session.title, session.hostName);
   const mdHtml = buildMarkdownHtml(board, session.title, session.hostName);
