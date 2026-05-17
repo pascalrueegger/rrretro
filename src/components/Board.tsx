@@ -352,7 +352,7 @@ function Card({
               const mine = (card.reactions[r.key] || []).includes(me.name);
               return (
                 <span key={r.key} className={`rxn-chip ${mine ? "mine" : ""}`}
-                      title={(card.reactions[r.key] || []).join(", ")}>
+                      data-tip={(card.reactions[r.key] || []).join("\n")}>
                   <r.Icon size={11} /> {count}
                 </span>
               );

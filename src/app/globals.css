@@ -267,6 +267,39 @@ input, textarea { font: inherit; color: inherit; }
 }
 .rxn-chip svg { display: block; }
 .rxn-chip.mine { border-color: var(--border-strong); color: var(--fg); }
+.rxn-chip[data-tip] { position: relative; }
+.rxn-chip[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background: var(--fg);
+  color: var(--bg);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.45;
+  white-space: pre;
+  text-align: left;
+  max-width: 220px;
+  box-shadow: var(--shadow-lift);
+  pointer-events: none;
+  z-index: 30;
+  animation: fade-in 120ms ease both;
+}
+.rxn-chip[data-tip]:hover::before {
+  content: "";
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 10px;
+  border: 5px solid transparent;
+  border-bottom-color: var(--fg);
+  pointer-events: none;
+  z-index: 30;
+  animation: fade-in 120ms ease both;
+}
 
 .card-foot-spacer { flex: 1; }
 .foot-btn {
