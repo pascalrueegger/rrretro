@@ -330,6 +330,12 @@ export function applyDeleteCard(b: BoardState, args: DeleteCardArgs): BoardState
     const g = nextGroups[gid];
     if (g.cardIds.includes(id)) {
       nextGroups[gid] = { ...g, cardIds: g.cardIds.filter((x) => x !== id) };
+      if (nextGroups[gid].cardIds.length === 0) {
+        delete nextGroups[gid];
+        for (const colId of Object.keys(nextLayout)) {
+          nextLayout[colId] = nextLayout[colId].filter((it) => !(it.type === "group" && it.id === gid));
+        }
+      }
     }
   }
   const nextActions = b.actions.filter((x) => x !== id);

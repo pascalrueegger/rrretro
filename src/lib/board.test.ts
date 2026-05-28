@@ -235,17 +235,16 @@ describe("applyDeleteCard", () => {
     expect(next.cards.c2).toBeUndefined();
   });
 
-  test("removing last-but-one group member leaves singleton group in place (deleteCard does not auto-dissolve)", () => {
-    // Behavior note: applyDeleteCard removes from group.cardIds but does NOT
-    // auto-dissolve a group that becomes empty/singleton. Only the drop reducers do.
+  test("deleting last group member dissolves the group and removes it from layout", () => {
     const c1 = makeCard({ id: "c1", columnId: "col_w", text: "a", author: "Ada" });
-    const c2 = makeCard({ id: "c2", columnId: "col_w", text: "b", author: "Ada" });
-    const b = makeBoard([c1, c2], {
-      groups: { g1: { id: "g1", columnId: "col_w", label: "Cluster", cardIds: ["c1", "c2"] } },
+    const b = makeBoard([c1], {
+      groups: { g1: { id: "g1", columnId: "col_w", label: "Cluster", cardIds: ["c1"] } },
       layout: { col_w: [{ type: "group", id: "g1" }], col_d: [], col_q: [] },
     });
-    const next = applyDeleteCard(b, { id: "c2" });
-    expect(next.groups.g1.cardIds).toEqual(["c1"]);
+    const next = applyDeleteCard(b, { id: "c1" });
+    expect(next.groups.g1).toBeUndefined();
+    expect(next.layout.col_w).toEqual([]);
+    expect(next.cards.c1).toBeUndefined();
   });
 
   test("deleting parent of an action nulls action's parentCardId", () => {
