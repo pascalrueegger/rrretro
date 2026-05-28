@@ -110,15 +110,20 @@ export default function App() {
     prevActionCountRef.current = board.actions.length;
   }, [board]);
   useEffect(() => { sessionRef.current = session; }, [session]);
+  // Syncs guest-side ended-modal visibility to host's sharing transitions.
+  // setState here is intentional: clearEndedTimer (clearTimeout) and the
+  // prevSharingRef mount-time semantics resist a clean render-phase refactor.
   useEffect(() => {
     if (!session || !me) return;
     const sharing = !!session.sharing;
     const prev = prevSharingRef.current;
     if (!me.isHost && prev === true && sharing === false) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowEnded(true);
     }
     if (!me.isHost && sharing === true) {
       clearEndedTimer();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowEnded(false);
     }
     prevSharingRef.current = sharing;
@@ -752,7 +757,9 @@ export default function App() {
   }, []);
 
   // Prune typers no longer in the room.
-  useEffect(() => {
+  const [prevParticipants, setPrevParticipants] = useState(participants);
+  if (prevParticipants !== participants) {
+    setPrevParticipants(participants);
     setTypingByColumn((prev) => {
       const ids = new Set(participants.map((p) => p.id));
       const next: typeof prev = {};
@@ -762,7 +769,7 @@ export default function App() {
       }
       return next;
     });
-  }, [participants]);
+  }
 
   const onNewBoard = async () => {
     if (typeof window !== "undefined" &&

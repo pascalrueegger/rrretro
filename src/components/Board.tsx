@@ -34,11 +34,19 @@ function ActionMeta({
   const [editing, setEditing] = useState<"who" | "when" | null>(null);
   const [whoVal, setWhoVal] = useState(card.assignee || "");
   const [whenVal, setWhenVal] = useState(card.dueDate || "");
+  const [prevAssignee, setPrevAssignee] = useState(card.assignee);
+  const [prevDueDate, setPrevDueDate] = useState(card.dueDate);
   const whoRef = useRef<HTMLInputElement>(null);
   const whenRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => setWhoVal(card.assignee || ""), [card.assignee]);
-  useEffect(() => setWhenVal(card.dueDate || ""), [card.dueDate]);
+  if (prevAssignee !== card.assignee) {
+    setPrevAssignee(card.assignee);
+    setWhoVal(card.assignee || "");
+  }
+  if (prevDueDate !== card.dueDate) {
+    setPrevDueDate(card.dueDate);
+    setWhenVal(card.dueDate || "");
+  }
   useEffect(() => {
     if (editing === "who") whoRef.current?.focus();
     if (editing === "when") {
@@ -154,8 +162,12 @@ function Card({
   const [dropZone, setDropZone] = useState<DropZone | null>(null);
   const cardEl = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const [prevCardText, setPrevCardText] = useState(card.text);
 
-  useEffect(() => setText(card.text), [card.text]);
+  if (prevCardText !== card.text) {
+    setPrevCardText(card.text);
+    setText(card.text);
+  }
   useEffect(() => { if (editing) textRef.current?.focus(); }, [editing]);
   useLayoutEffect(() => {
     if (!editing) return;
@@ -410,7 +422,11 @@ function GroupView({
   onRenameGroup: (id: string, label: string) => void;
 }) {
   const [label, setLabel] = useState(group.label);
-  useEffect(() => setLabel(group.label), [group.label]);
+  const [prevGroupLabel, setPrevGroupLabel] = useState(group.label);
+  if (prevGroupLabel !== group.label) {
+    setPrevGroupLabel(group.label);
+    setLabel(group.label);
+  }
   const commit = () => {
     if (label.trim() !== group.label) onRenameGroup(group.id, label.trim() || "Cluster");
   };

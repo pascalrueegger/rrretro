@@ -15,7 +15,7 @@ const config = [
         },
       ],
       "react-hooks/exhaustive-deps": "warn",
-      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/set-state-in-effect": "error",
       "react-hooks/refs": "warn",
     },
   },
