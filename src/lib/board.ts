@@ -1,4 +1,4 @@
-import type { BoardState, Column } from "./types";
+import type { BoardState, Card, Column, ReactionKey, ReactionVote, Reactions } from "./types";
 
 export const DEFAULT_COLUMNS: Column[] = [
   { id: "col_w", title: "Went well" },
@@ -14,6 +14,42 @@ export function seedBoard(): BoardState {
     groups: {},
     actions: [],
   };
+}
+
+/**
+ * Migrate legacy shapes:
+ * - Reactions stored as `string[]` of names → `ReactionVote[]` with synthetic ids.
+ * - Cards/Comments missing `authorId` → derive from author name (best effort).
+ * Idempotent; safe to call on already-normalized boards.
+ */
+export function normalizeBoard(b: BoardState): BoardState {
+  const KEYS: ReactionKey[] = ["up", "celebrate", "gratitude"];
+  const normRx = (r: unknown): Reactions => {
+    const src = (r ?? {}) as Record<string, unknown>;
+    const out = { up: [], celebrate: [], gratitude: [] } as Reactions;
+    for (const k of KEYS) {
+      const arr = src[k];
+      if (!Array.isArray(arr)) continue;
+      out[k] = arr.map((v): ReactionVote => {
+        if (typeof v === "string") return { id: `legacy:${v}`, name: v };
+        const o = v as Partial<ReactionVote>;
+        return { id: o.id ?? `legacy:${o.name ?? "?"}`, name: o.name ?? "?" };
+      });
+    }
+    return out;
+  };
+  const normCard = (c: Card): Card => ({
+    ...c,
+    authorId: c.authorId ?? `legacy:${c.author}`,
+    reactions: normRx(c.reactions),
+    comments: (c.comments || []).map((cm) => ({
+      ...cm,
+      authorId: cm.authorId ?? `legacy:${cm.author}`,
+    })),
+  });
+  const cards: Record<string, Card> = {};
+  for (const id of Object.keys(b.cards || {})) cards[id] = normCard(b.cards[id]);
+  return { ...b, cards };
 }
 
 const esc = (s: string) =>

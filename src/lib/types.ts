@@ -1,11 +1,17 @@
 export type ReactionKey = "up" | "celebrate" | "gratitude";
 
-export type Reactions = Record<ReactionKey, string[]>;
+export interface ReactionVote {
+  id: string;   // participant id — identity check
+  name: string; // snapshot of name at vote time — display only
+}
+
+export type Reactions = Record<ReactionKey, ReactionVote[]>;
 
 export interface Comment {
   id: string;
   text: string;
   author: string;
+  authorId: string;
   authorColor: string;
 }
 
@@ -14,6 +20,7 @@ export interface Card {
   columnId: string;
   text: string;
   author: string;
+  authorId: string;
   authorColor: string;
   comments: Comment[];
   reactions: Reactions;

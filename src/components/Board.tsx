@@ -137,7 +137,9 @@ function Card({
   onLinkHover, onCardDropOnCard, onCardDropAdjacent,
   parentColumnId, groupId, registerCardEl,
 }: CardProps) {
-  const isAuthor = card.author === me.name;
+  const isAuthor = card.authorId
+    ? card.authorId === me.id
+    : card.author === me.name; // legacy fallback for boards saved before authorId
   const [editing, setEditing] = useState(card.text === "" && isAuthor);
   const [text, setText] = useState(card.text);
   const [showComments, setShowComments] = useState(false);
@@ -166,7 +168,7 @@ function Card({
   useLayoutEffect(() => {
     if (cardEl.current) registerCardEl(card.id, cardEl.current);
     return () => registerCardEl(card.id, null);
-  });
+  }, [card.id, registerCardEl]);
 
   const commitText = () => {
     const t = text.trim();
@@ -239,7 +241,9 @@ function Card({
     else onCardDropAdjacent(drag.cardId, card.id, zone);
   };
 
-  const myReactions = REACTIONS.filter((r) => (card.reactions[r.key] || []).includes(me.name));
+  const myReactions = REACTIONS.filter((r) =>
+    (card.reactions[r.key] || []).some((v) => v.id === me.id)
+  );
   const hasAnyCounts = REACTIONS.some((r) => (card.reactions[r.key] || []).length > 0);
 
   const linkedAsParent = !!card.actionCardIds && card.actionCardIds.length > 0;
@@ -345,12 +349,13 @@ function Card({
         {hasAnyCounts && (
           <span className="rxn-counts">
             {REACTIONS.map((r) => {
-              const count = (card.reactions[r.key] || []).length;
+              const votes = card.reactions[r.key] || [];
+              const count = votes.length;
               if (!count) return null;
-              const mine = (card.reactions[r.key] || []).includes(me.name);
+              const mine = votes.some((v) => v.id === me.id);
               return (
                 <span key={r.key} className={`rxn-chip ${mine ? "mine" : ""}`}
-                      data-tip={(card.reactions[r.key] || []).join("\n")}>
+                      data-tip={votes.map((v) => v.name).join("\n")}>
                   <r.Icon size={11} /> {count}
                 </span>
               );

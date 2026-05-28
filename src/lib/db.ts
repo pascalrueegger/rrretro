@@ -51,6 +51,10 @@ export async function loadSession(id: string): Promise<SessionRecord | undefined
   return db().sessions.get(id);
 }
 
+export async function deleteSession(id: string) {
+  await db().sessions.delete(id);
+}
+
 export async function loadLastSession(): Promise<SessionRecord | undefined> {
   const p = await db().prefs.get("me");
   if (!p?.lastSessionId) return undefined;

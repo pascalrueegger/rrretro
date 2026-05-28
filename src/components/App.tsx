@@ -15,10 +15,11 @@ import {
   buildActionsHtml,
   buildMarkdown,
   buildMarkdownHtml,
+  normalizeBoard,
   seedBoard,
 } from "@/lib/board";
 import { applyTheme, nameColor, rerollRandom } from "@/lib/theme";
-import { getPrefs, loadGuestMe, loadSession, resetAll, saveGuestMe, saveSession, setPref } from "@/lib/db";
+import { deleteSession, getPrefs, loadGuestMe, loadSession, saveGuestMe, saveSession, setPref } from "@/lib/db";
 import { initials, randCode, uid } from "@/lib/util";
 import { PeerNet, type PeerMessage } from "@/lib/peer";
 import type {
@@ -155,7 +156,7 @@ export default function App() {
         if (rec && p.me) {
           setMe(p.me);
           setSession(rec.session);
-          setBoard(rec.board);
+          setBoard(normalizeBoard(rec.board));
           if (p.me.isHost) {
             setParticipants([
               { id: p.me.id, name: p.me.name, color: p.me.color, initial: p.me.initial },
@@ -246,8 +247,9 @@ export default function App() {
               return next;
             });
           } else if (msg.type === "board") {
-            setBoard(msg.board);
-            boardRef.current = msg.board;
+            const nb = normalizeBoard(msg.board);
+            setBoard(nb);
+            boardRef.current = nb;
             // broadcast back
             setTimeout(() => broadcastState(), 0);
           } else if (msg.type === "session") {
@@ -258,13 +260,15 @@ export default function App() {
           if (msg.type === "snapshot") {
             setSession(msg.session);
             sessionRef.current = msg.session;
-            setBoard(msg.board);
-            boardRef.current = msg.board;
+            const nb = normalizeBoard(msg.board);
+            setBoard(nb);
+            boardRef.current = nb;
             setParticipants(msg.participants);
             participantsRef.current = msg.participants;
           } else if (msg.type === "board") {
-            setBoard(msg.board);
-            boardRef.current = msg.board;
+            const nb = normalizeBoard(msg.board);
+            setBoard(nb);
+            boardRef.current = nb;
           } else if (msg.type === "session") {
             setSession(msg.session);
             sessionRef.current = msg.session;
@@ -378,7 +382,7 @@ export default function App() {
         ...b.cards,
         [id]: {
           id, columnId, text,
-          author: me.name, authorColor: me.color,
+          author: me.name, authorId: me.id, authorColor: me.color,
           comments: [],
           reactions: { up: [], celebrate: [], gratitude: [] },
           parentCardId: null,
@@ -436,7 +440,7 @@ export default function App() {
       if (!c) return b;
       const cm = {
         id: uid("cm"), text,
-        author: me.name, authorColor: me.color,
+        author: me.name, authorId: me.id, authorColor: me.color,
       };
       return { ...b, cards: { ...b.cards, [cardId]: { ...c, comments: [...c.comments, cm] } } };
     });
@@ -448,7 +452,10 @@ export default function App() {
       const c = b.cards[cardId];
       if (!c) return b;
       const arr = c.reactions[kind] || [];
-      const next = arr.includes(me.name) ? arr.filter((n) => n !== me.name) : [...arr, me.name];
+      const has = arr.some((v) => v.id === me.id);
+      const next = has
+        ? arr.filter((v) => v.id !== me.id)
+        : [...arr, { id: me.id, name: me.name }];
       return { ...b, cards: { ...b.cards, [cardId]: { ...c, reactions: { ...c.reactions, [kind]: next } } } };
     });
   };
@@ -464,7 +471,7 @@ export default function App() {
       const id = uid("a");
       const action: CardT = {
         id, columnId: "actions", text,
-        author: me.name, authorColor: me.color,
+        author: me.name, authorId: me.id, authorColor: me.color,
         comments: [],
         reactions: { up: [], celebrate: [], gratitude: [] },
         parentCardId: parentId,
@@ -763,7 +770,12 @@ export default function App() {
         !window.confirm("Start a new board? This will discard the current retro.")) {
       return;
     }
-    try { await resetAll(); } catch {}
+    try {
+      // Only drop the current session row + the lastSessionId pointer.
+      // Preserve user prefs (me, tweaks) and guestMe cache for other codes.
+      if (session?.id) await deleteSession(session.id);
+      await setPref({ lastSessionId: undefined });
+    } catch {}
     peerRef.current?.close();
     peerRef.current = null;
     setShowShare(false);
