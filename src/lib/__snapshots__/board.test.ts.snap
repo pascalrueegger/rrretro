@@ -1,0 +1,57 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`buildMarkdown empty board 1`] = `
+"# Retro
+
+_Hosted by Ada· <DATE>
+
+## Went well
+
+_(empty)_
+
+## Didn't go well
+
+_(empty)_
+
+## Open questions?
+
+_(empty)_
+"
+`;
+
+exports[`buildMarkdown one card 1`] = `
+"# Retro
+
+_Hosted by Ada· <DATE>
+
+## Went well
+
+- Shipping went smooth — _Ada_
+## Didn't go well
+
+_(empty)_
+
+## Open questions?
+
+_(empty)_
+"
+`;
+
+exports[`buildMarkdown card with reactions and comments 1`] = `
+"# Retro
+
+_Hosted by Ada· <DATE>
+
+## Went well
+
+_(empty)_
+
+## Didn't go well
+
+- Flaky tests — _Bo_ _(+1 2 · ♡ 1)_
+  - _Ada_: agreed
+## Open questions?
+
+_(empty)_
+"
+`;

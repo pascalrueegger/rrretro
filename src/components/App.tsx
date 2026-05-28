@@ -300,7 +300,6 @@ export default function App() {
         setRetryTick((n) => n + 1);
       },
       onError: (err) => {
-        // eslint-disable-next-line no-console
         console.warn("peer error", err);
         const t = (err as { type?: string }).type;
         if (!meRef.current?.isHost && (t === "peer-unavailable" || t === "network" || t === "server-error")) {
