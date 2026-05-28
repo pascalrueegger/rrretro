@@ -11,6 +11,21 @@ import { ActionsSidebar, Column, Connectors } from "./Board";
 import { ActionComposeModal, ExportModal, HostSetupModal, JoinModal, SessionEndedModal, ShareModal } from "./Modals";
 import PalettePopover from "./PalettePopover";
 import {
+  applyAddCard,
+  applyAddColumn,
+  applyAddComment,
+  applyCommitAction,
+  applyDeleteCard,
+  applyDeleteColumn,
+  applyDropCardAdjacent,
+  applyDropCardOnCard,
+  applyDropIntoActions,
+  applyDropIntoColumn,
+  applyReact,
+  applyRenameColumn,
+  applyRenameGroup,
+  applyUnGroup,
+  applyUpdateCard,
   buildActionsChat,
   buildActionsHtml,
   buildMarkdown,
@@ -380,88 +395,29 @@ export default function App() {
   const addCard = (columnId: string, text: string) => {
     if (!me) return;
     const id = uid("c");
-    updateBoard((b) => ({
-      ...b,
-      cards: {
-        ...b.cards,
-        [id]: {
-          id, columnId, text,
-          author: me.name, authorId: me.id, authorColor: me.color,
-          comments: [],
-          reactions: { up: [], celebrate: [], gratitude: [] },
-          parentCardId: null,
-          actionCardIds: [],
-          isAction: false,
-        },
-      },
-      layout: { ...b.layout, [columnId]: [...(b.layout[columnId] || []), { type: "card", id }] },
-    }));
+    const author = { id: me.id, name: me.name, color: me.color };
+    updateBoard((b) => applyAddCard(b, { id, columnId, text, author }));
   };
 
   const updateCard = (id: string, patch: Partial<CardT>) => {
-    updateBoard((b) => ({ ...b, cards: { ...b.cards, [id]: { ...b.cards[id], ...patch } } }));
+    updateBoard((b) => applyUpdateCard(b, { id, patch }));
   };
 
   const deleteCard = (id: string) => {
-    updateBoard((b) => {
-      const card = b.cards[id];
-      if (!card) return b;
-      const nextCards = { ...b.cards };
-      delete nextCards[id];
-
-      const nextLayout: BoardState["layout"] = { ...b.layout };
-      const nextGroups = { ...b.groups };
-      for (const colId of Object.keys(nextLayout)) {
-        nextLayout[colId] = nextLayout[colId].filter((it) => !(it.type === "card" && it.id === id));
-      }
-      for (const gid of Object.keys(nextGroups)) {
-        const g = nextGroups[gid];
-        if (g.cardIds.includes(id)) {
-          nextGroups[gid] = { ...g, cardIds: g.cardIds.filter((x) => x !== id) };
-        }
-      }
-      const nextActions = b.actions.filter((x) => x !== id);
-
-      if (card.isAction && card.parentCardId && nextCards[card.parentCardId]) {
-        nextCards[card.parentCardId] = {
-          ...nextCards[card.parentCardId],
-          actionCardIds: (nextCards[card.parentCardId].actionCardIds || []).filter((x) => x !== id),
-        };
-      }
-      if (card.actionCardIds?.length) {
-        for (const aid of card.actionCardIds) {
-          if (nextCards[aid]) nextCards[aid] = { ...nextCards[aid], parentCardId: null };
-        }
-      }
-      return { ...b, cards: nextCards, layout: nextLayout, groups: nextGroups, actions: nextActions };
-    });
+    updateBoard((b) => applyDeleteCard(b, { id }));
   };
 
   const addComment = (cardId: string, text: string) => {
     if (!me) return;
-    updateBoard((b) => {
-      const c = b.cards[cardId];
-      if (!c) return b;
-      const cm = {
-        id: uid("cm"), text,
-        author: me.name, authorId: me.id, authorColor: me.color,
-      };
-      return { ...b, cards: { ...b.cards, [cardId]: { ...c, comments: [...c.comments, cm] } } };
-    });
+    const commentId = uid("cm");
+    const author = { id: me.id, name: me.name, color: me.color };
+    updateBoard((b) => applyAddComment(b, { cardId, commentId, text, author }));
   };
 
   const react = (cardId: string, kind: ReactionKey) => {
     if (!me) return;
-    updateBoard((b) => {
-      const c = b.cards[cardId];
-      if (!c) return b;
-      const arr = c.reactions[kind] || [];
-      const has = arr.some((v) => v.id === me.id);
-      const next = has
-        ? arr.filter((v) => v.id !== me.id)
-        : [...arr, { id: me.id, name: me.name }];
-      return { ...b, cards: { ...b.cards, [cardId]: { ...c, reactions: { ...c.reactions, [kind]: next } } } };
-    });
+    const voter = { id: me.id, name: me.name };
+    updateBoard((b) => applyReact(b, { cardId, kind, voter }));
   };
 
   const openActionCompose = (parentId: string) => setComposingActionFor(parentId);
@@ -469,259 +425,47 @@ export default function App() {
   const commitAction = ({ text, assignee, dueDate }: { text: string; assignee: string | null; dueDate: string | null }) => {
     const parentId = composingActionFor;
     if (!parentId || !me) return;
-    updateBoard((b) => {
-      const parent = b.cards[parentId];
-      if (!parent) return b;
-      const id = uid("a");
-      const action: CardT = {
-        id, columnId: "actions", text,
-        author: me.name, authorId: me.id, authorColor: me.color,
-        comments: [],
-        reactions: { up: [], celebrate: [], gratitude: [] },
-        parentCardId: parentId,
-        actionCardIds: [],
-        isAction: true,
-        assignee, dueDate,
-      };
-      return {
-        ...b,
-        cards: {
-          ...b.cards,
-          [id]: action,
-          [parentId]: { ...parent, actionCardIds: [...(parent.actionCardIds || []), id] },
-        },
-        actions: [...b.actions, id],
-      };
-    });
+    const id = uid("a");
+    const author = { id: me.id, name: me.name, color: me.color };
+    updateBoard((b) => applyCommitAction(b, { id, parentId, text, author, assignee, dueDate }));
     setComposingActionFor(null);
   };
 
   const addColumn = () => {
     const id = uid("col");
-    updateBoard((b) => ({
-      ...b,
-      columns: [...b.columns, { id, title: "New column" }],
-      layout: { ...b.layout, [id]: [] },
-    }));
+    updateBoard((b) => applyAddColumn(b, { id, title: "New column" }));
     setPendingFocusCol(id);
   };
   const renameColumn = (id: string, title: string) => {
-    updateBoard((b) => ({
-      ...b,
-      columns: b.columns.map((c) => (c.id === id ? { ...c, title } : c)),
-    }));
+    updateBoard((b) => applyRenameColumn(b, { id, title }));
   };
   const deleteColumn = (id: string) => {
-    updateBoard((b) => {
-      if (b.columns.length <= 1) return b;
-      const items = b.layout[id] || [];
-      const cardIdsToRemove: string[] = [];
-      const groupIdsToRemove: string[] = [];
-      for (const it of items) {
-        if (it.type === "group") {
-          groupIdsToRemove.push(it.id);
-          const g = b.groups[it.id];
-          if (g) for (const cid of g.cardIds) cardIdsToRemove.push(cid);
-        } else {
-          cardIdsToRemove.push(it.id);
-        }
-      }
-      const nextCards = { ...b.cards };
-      for (const cid of cardIdsToRemove) {
-        const c = nextCards[cid];
-        if (!c) continue;
-        if (c.actionCardIds?.length) {
-          for (const aid of c.actionCardIds) {
-            if (nextCards[aid]) nextCards[aid] = { ...nextCards[aid], parentCardId: null };
-          }
-        }
-        delete nextCards[cid];
-      }
-      const nextGroups = { ...b.groups };
-      for (const gid of groupIdsToRemove) delete nextGroups[gid];
-      const nextLayout = { ...b.layout };
-      delete nextLayout[id];
-      return {
-        ...b,
-        columns: b.columns.filter((c) => c.id !== id),
-        layout: nextLayout,
-        cards: nextCards,
-        groups: nextGroups,
-      };
-    });
+    updateBoard((b) => applyDeleteColumn(b, { id }));
   };
 
   const dropIntoColumn = (cardId: string, targetColId: string) => {
-    updateBoard((b) => {
-      const card = b.cards[cardId];
-      if (!card) return b;
-      if (card.isAction) return b;
-
-      const nextLayout: BoardState["layout"] = { ...b.layout };
-      const nextGroups = { ...b.groups };
-      for (const gid of Object.keys(nextGroups)) {
-        const g = nextGroups[gid];
-        if (g.cardIds.includes(cardId)) {
-          nextGroups[gid] = { ...g, cardIds: g.cardIds.filter((x) => x !== cardId) };
-          if (nextGroups[gid].cardIds.length === 0) {
-            delete nextGroups[gid];
-            for (const col of Object.keys(nextLayout)) {
-              nextLayout[col] = nextLayout[col].filter((it) => !(it.type === "group" && it.id === gid));
-            }
-          }
-        }
-      }
-      for (const col of Object.keys(nextLayout)) {
-        nextLayout[col] = nextLayout[col].filter((it) => !(it.type === "card" && it.id === cardId));
-      }
-      nextLayout[targetColId] = [...(nextLayout[targetColId] || []), { type: "card", id: cardId }];
-
-      const nextCards = {
-        ...b.cards,
-        [cardId]: { ...card, columnId: targetColId, groupId: null },
-      };
-      return { ...b, cards: nextCards, layout: nextLayout, groups: nextGroups };
-    });
+    updateBoard((b) => applyDropIntoColumn(b, { cardId, targetColId }));
   };
 
   const dropIntoActions = (cardId: string) => {
-    updateBoard((b) => {
-      const card = b.cards[cardId];
-      if (!card || !card.isAction) return b;
-      const others = b.actions.filter((x) => x !== cardId);
-      return { ...b, actions: [...others, cardId] };
-    });
+    updateBoard((b) => applyDropIntoActions(b, { cardId }));
   };
 
   const dropCardOnCard = (draggedId: string, targetId: string) => {
-    updateBoard((b) => {
-      const dragged = b.cards[draggedId];
-      const target = b.cards[targetId];
-      if (!dragged || !target) return b;
-      if (target.isAction || dragged.isAction) return b;
-      if (draggedId === targetId) return b;
-
-      const nextLayout: BoardState["layout"] = { ...b.layout };
-      const nextGroups = { ...b.groups };
-      const nextCards = { ...b.cards };
-
-      for (const gid of Object.keys(nextGroups)) {
-        const g = nextGroups[gid];
-        if (g.cardIds.includes(draggedId)) {
-          nextGroups[gid] = { ...g, cardIds: g.cardIds.filter((x) => x !== draggedId) };
-          if (nextGroups[gid].cardIds.length === 0) {
-            delete nextGroups[gid];
-            for (const col of Object.keys(nextLayout)) {
-              nextLayout[col] = nextLayout[col].filter((it) => !(it.type === "group" && it.id === gid));
-            }
-          }
-        }
-      }
-      for (const col of Object.keys(nextLayout)) {
-        nextLayout[col] = nextLayout[col].filter((it) => !(it.type === "card" && it.id === draggedId));
-      }
-
-      const targetColId = target.columnId;
-      let hostGroupId: string | null = null;
-      for (const gid of Object.keys(nextGroups)) {
-        if (nextGroups[gid].cardIds.includes(targetId)) { hostGroupId = gid; break; }
-      }
-
-      if (hostGroupId) {
-        const g = nextGroups[hostGroupId];
-        nextGroups[hostGroupId] = { ...g, cardIds: [...g.cardIds, draggedId] };
-        nextCards[draggedId] = { ...dragged, columnId: g.columnId };
-      } else {
-        const gid = uid("g");
-        nextGroups[gid] = { id: gid, columnId: targetColId, label: "Cluster", cardIds: [targetId, draggedId] };
-        nextLayout[targetColId] = nextLayout[targetColId].map((it) =>
-          it.type === "card" && it.id === targetId ? { type: "group", id: gid } : it
-        );
-        nextCards[draggedId] = { ...dragged, columnId: targetColId };
-      }
-      return { ...b, cards: nextCards, layout: nextLayout, groups: nextGroups };
-    });
+    const newGroupId = uid("g");
+    updateBoard((b) => applyDropCardOnCard(b, { draggedId, targetId, newGroupId }));
   };
 
   const dropCardAdjacent = (draggedId: string, targetId: string, where: "before" | "after") => {
-    updateBoard((b) => {
-      const dragged = b.cards[draggedId];
-      const target = b.cards[targetId];
-      if (!dragged || !target) return b;
-      if (target.isAction || dragged.isAction) return b;
-      if (draggedId === targetId) return b;
-
-      const nextLayout: BoardState["layout"] = { ...b.layout };
-      const nextGroups = { ...b.groups };
-      const nextCards = { ...b.cards };
-
-      for (const gid of Object.keys(nextGroups)) {
-        const g = nextGroups[gid];
-        if (g.cardIds.includes(draggedId)) {
-          nextGroups[gid] = { ...g, cardIds: g.cardIds.filter((x) => x !== draggedId) };
-          if (nextGroups[gid].cardIds.length === 0) {
-            delete nextGroups[gid];
-            for (const col of Object.keys(nextLayout)) {
-              nextLayout[col] = nextLayout[col].filter((it) => !(it.type === "group" && it.id === gid));
-            }
-          }
-        }
-      }
-      for (const col of Object.keys(nextLayout)) {
-        nextLayout[col] = nextLayout[col].filter((it) => !(it.type === "card" && it.id === draggedId));
-      }
-
-      let targetGroupId: string | null = null;
-      for (const gid of Object.keys(nextGroups)) {
-        if (nextGroups[gid].cardIds.includes(targetId)) { targetGroupId = gid; break; }
-      }
-
-      if (targetGroupId) {
-        const g = nextGroups[targetGroupId];
-        const idx = g.cardIds.indexOf(targetId);
-        const insertAt = where === "before" ? idx : idx + 1;
-        const ids = [...g.cardIds];
-        ids.splice(insertAt, 0, draggedId);
-        nextGroups[targetGroupId] = { ...g, cardIds: ids };
-        nextCards[draggedId] = { ...dragged, columnId: g.columnId };
-      } else {
-        const colId = target.columnId;
-        const items = nextLayout[colId] || [];
-        const idx = items.findIndex((it) => it.type === "card" && it.id === targetId);
-        const insertAt = idx < 0 ? items.length : where === "before" ? idx : idx + 1;
-        nextLayout[colId] = [
-          ...items.slice(0, insertAt),
-          { type: "card", id: draggedId },
-          ...items.slice(insertAt),
-        ];
-        nextCards[draggedId] = { ...dragged, columnId: colId };
-      }
-      return { ...b, cards: nextCards, layout: nextLayout, groups: nextGroups };
-    });
+    updateBoard((b) => applyDropCardAdjacent(b, { draggedId, targetId, where }));
   };
 
   const unGroup = (groupId: string) => {
-    updateBoard((b) => {
-      const g = b.groups[groupId];
-      if (!g) return b;
-      const nextGroups = { ...b.groups };
-      delete nextGroups[groupId];
-      const nextLayout: BoardState["layout"] = { ...b.layout };
-      const items = nextLayout[g.columnId] || [];
-      const idx = items.findIndex((it) => it.type === "group" && it.id === groupId);
-      if (idx >= 0) {
-        const expanded = g.cardIds.map((cid) => ({ type: "card" as const, id: cid }));
-        nextLayout[g.columnId] = [...items.slice(0, idx), ...expanded, ...items.slice(idx + 1)];
-      }
-      return { ...b, layout: nextLayout, groups: nextGroups };
-    });
+    updateBoard((b) => applyUnGroup(b, { groupId }));
   };
 
   const renameGroup = (groupId: string, label: string) => {
-    updateBoard((b) => ({
-      ...b,
-      groups: { ...b.groups, [groupId]: { ...b.groups[groupId], label } },
-    }));
+    updateBoard((b) => applyRenameGroup(b, { groupId, label }));
   };
 
   /* ─── Host / Join setup ─────────────────────────────────────────── */
