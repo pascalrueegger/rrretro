@@ -181,6 +181,30 @@ async function loadPeerJs(): Promise<typeof import("peerjs")> {
   return await import("peerjs");
 }
 
+// PeerJS ships default Google STUN, but no TURN. Without TURN, peers behind
+// symmetric NAT / firewalls / cross-browser mDNS blocks can't connect.
+// Open Relay (Metered) provides free public TURN. Anyone can use these creds.
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:openrelay.metered.ca:80" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+];
+
+function peerOptions(): import("peerjs").PeerOptions {
+  const host = process.env.NEXT_PUBLIC_PEER_HOST;
+  const base: import("peerjs").PeerOptions = { config: { iceServers: ICE_SERVERS } };
+  if (!host) return base;
+  return {
+    ...base,
+    host,
+    port: 443,
+    secure: true,
+    path: process.env.NEXT_PUBLIC_PEER_PATH ?? "/myapp",
+  };
+}
+
 export class PeerNet {
   private handlers: PeerHandlers;
   private peer: PeerType | null = null;
@@ -214,7 +238,7 @@ export class PeerNet {
     if (this.closed) return;
     const { Peer } = await loadPeerJs();
     if (this.closed) return;
-    this.peer = new Peer(peerIdFor(this.hostCode!));
+    this.peer = new Peer(peerIdFor(this.hostCode!), peerOptions());
     this.peer.on("open", (id) => {
       if (this.closed) return;
       this.retryAttempt = 0;
@@ -256,7 +280,7 @@ export class PeerNet {
     if (this.closed) return;
     const { Peer } = await loadPeerJs();
     if (this.closed) return;
-    this.peer = new Peer();
+    this.peer = new Peer(peerOptions());
     this.peer.on("open", (id) => {
       if (this.closed) return;
       this.handlers.onOpen?.(id);
