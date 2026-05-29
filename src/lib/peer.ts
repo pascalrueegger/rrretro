@@ -189,6 +189,7 @@ export class PeerNet {
   private state: PeerState = "connecting";
   private role: "host" | "guest" | null = null;
   private guestCode: string | null = null;
+  private hostCode: string | null = null;
   private retryAttempt = 0;
   private retryTimer: unknown = null;
   private readonly setTimeoutImpl: ScheduleTimer;
@@ -204,18 +205,42 @@ export class PeerNet {
 
   async startHost(code: string) {
     this.role = "host";
+    this.hostCode = code;
     this.setState("connecting");
+    await this.connectAsHost();
+  }
+
+  private async connectAsHost() {
+    if (this.closed) return;
     const { Peer } = await loadPeerJs();
     if (this.closed) return;
-    this.peer = new Peer(peerIdFor(code));
+    this.peer = new Peer(peerIdFor(this.hostCode!));
     this.peer.on("open", (id) => {
       if (this.closed) return;
+      this.retryAttempt = 0;
       this.setState("open");
       this.handlers.onOpen?.(id);
+    });
+    this.peer.on("disconnected", () => {
+      if (this.closed) return;
+      // Broker WS dropped but peer alive — cheap reconnect, keeps same ID.
+      try { this.peer?.reconnect(); } catch {
+        // peer destroyed mid-flight — full retry will pick up
+      }
     });
     this.peer.on("error", (err) => {
       if (this.closed) return;
       this.handlers.onError?.(err);
+      const t = (err as { type?: string }).type;
+      if (
+        t === "network" ||
+        t === "server-error" ||
+        t === "socket-error" ||
+        t === "socket-closed" ||
+        t === "unavailable-id"
+      ) {
+        this.scheduleReconnect();
+      }
     });
     this.peer.on("connection", (conn) => this.attachConn(conn));
   }
@@ -249,11 +274,23 @@ export class PeerNet {
       conn.on("open", () => this.clearTimeoutImpl(timer));
       conn.on("close", () => this.clearTimeoutImpl(timer));
     });
+    this.peer.on("disconnected", () => {
+      if (this.closed) return;
+      try { this.peer?.reconnect(); } catch {
+        // peer destroyed mid-flight — full retry will pick up
+      }
+    });
     this.peer.on("error", (err) => {
       if (this.closed) return;
       this.handlers.onError?.(err);
       const t = (err as { type?: string }).type;
-      if (t === "peer-unavailable" || t === "network" || t === "server-error") {
+      if (
+        t === "peer-unavailable" ||
+        t === "network" ||
+        t === "server-error" ||
+        t === "socket-error" ||
+        t === "socket-closed"
+      ) {
         this.scheduleReconnect();
       }
     });
@@ -299,7 +336,7 @@ export class PeerNet {
 
   private scheduleReconnect() {
     if (this.closed) return;
-    if (this.role !== "guest") return;
+    if (this.role === null) return;
     if (this.retryTimer !== null) return;
     this.setState("reconnecting");
     const delay = backoffFor(this.retryAttempt);
@@ -313,7 +350,8 @@ export class PeerNet {
         // peer may already be torn down
       }
       this.peer = null;
-      void this.connectAsGuest();
+      if (this.role === "host") void this.connectAsHost();
+      else void this.connectAsGuest();
     }, delay);
   }
 

@@ -265,7 +265,33 @@ describe("PeerNet reconnect", () => {
     expect(timers[0].cleared).toBe(true);
   });
 
-  test("host role never schedules reconnect", () => {
+  test("host role schedules reconnect on broker failure", () => {
+    const timers: { fn: () => void; ms: number; cleared: boolean }[] = [];
+    const net = new PeerNet(
+      {},
+      {
+        setTimeout: (fn, ms) => {
+          timers.push({ fn, ms, cleared: false });
+          return timers.length - 1;
+        },
+        clearTimeout: (id) => { timers[id as number].cleared = true; },
+      },
+    );
+    const inner = net as unknown as {
+      role: "host" | "guest" | null;
+      hostCode: string | null;
+      scheduleReconnect(): void;
+    };
+    inner.role = "host";
+    inner.hostCode = "ABC";
+    inner.scheduleReconnect();
+    expect(timers.length).toBe(1);
+    expect(timers[0].ms).toBe(1000);
+    net.close();
+    expect(timers[0].cleared).toBe(true);
+  });
+
+  test("scheduleReconnect is a no-op before a role is assigned", () => {
     const timers: { fn: () => void; ms: number }[] = [];
     const net = new PeerNet(
       {},
@@ -274,12 +300,7 @@ describe("PeerNet reconnect", () => {
         clearTimeout: () => {},
       },
     );
-    const inner = net as unknown as {
-      role: "host" | "guest" | null;
-      scheduleReconnect(): void;
-    };
-    inner.role = "host";
-    inner.scheduleReconnect();
+    (net as unknown as { scheduleReconnect(): void }).scheduleReconnect();
     expect(timers.length).toBe(0);
     net.close();
   });
