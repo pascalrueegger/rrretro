@@ -148,8 +148,10 @@ input, textarea { font: inherit; color: inherit; }
 }
 
 /* Board */
-.board { --rail-w: 360px; position: relative; height: 100%; overflow: hidden; }
-.board.actions-collapsed { --rail-w: 84px; }
+/* --rail-w must match the rail's visible width + right offset (320+18 / 44+18)
+   — anything larger leaves a gap where board-scroll ends but the rail doesn't reach. */
+.board { --rail-w: 338px; position: relative; height: 100%; overflow: hidden; }
+.board.actions-collapsed { --rail-w: 62px; }
 .board-scroll {
   position: absolute; inset: 0 var(--rail-w) 0 0;
   overflow-x: auto; overflow-y: hidden; scroll-behavior: smooth;
