@@ -88,10 +88,12 @@ export function ShareModal({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  // Token rides the URL fragment so it never reaches the server / referer.
+  const tokenFrag = session.joinToken ? `#k=${session.joinToken}` : "";
   const link =
     typeof window !== "undefined"
-      ? `${location.origin}${location.pathname}?join=${session.code}`
-      : `?join=${session.code}`;
+      ? `${location.origin}${location.pathname}?join=${session.code}${tokenFrag}`
+      : `?join=${session.code}${tokenFrag}`;
   const inputRef = useRef<HTMLInputElement>(null);
 
   const copy = async () => {

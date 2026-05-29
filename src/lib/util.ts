@@ -29,6 +29,21 @@ export const randCode = () => {
   ).join("");
 };
 
+// 16 random bytes, base64url. NOT cryptographic auth — the token rides the
+// share URL fragment so anyone with the link has it. Pairs with the 6-char
+// code so guessing the code alone isn't enough to join.
+export function makeJoinToken(): string {
+  const buf = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(buf);
+  } else {
+    for (let i = 0; i < buf.length; i++) buf[i] = Math.floor(Math.random() * 256);
+  }
+  let bin = "";
+  for (const b of buf) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 export const initials = (n: string) =>
   n
     .split(/\s+/)

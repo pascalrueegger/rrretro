@@ -35,8 +35,8 @@ import {
 } from "@/lib/board";
 import { applyTheme, nameColor, rerollRandom } from "@/lib/theme";
 import { deleteSession, getPrefs, loadGuestMe, loadSession, saveGuestMe, saveSession, setPref } from "@/lib/db";
-import { initials, randCode, uid } from "@/lib/util";
-import { PeerNet, type PeerMessage } from "@/lib/peer";
+import { initials, makeJoinToken, randCode, uid } from "@/lib/util";
+import { PeerNet, verifyHelloToken, type PeerMessage } from "@/lib/peer";
 import type {
   BoardState,
   Card as CardT,
@@ -86,7 +86,6 @@ export default function App() {
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null);
   const [actionsCollapsed, setActionsCollapsed] = useState(true);
   const [showEnded, setShowEnded] = useState(false);
-  const [retryTick, setRetryTick] = useState(0);
   const prevActionCountRef = useRef(0);
   const prevSharingRef = useRef<boolean | null>(null);
   const endedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,6 +100,11 @@ export default function App() {
   const joinCode = useMemo(() => {
     if (typeof window === "undefined") return null;
     return new URLSearchParams(location.search).get("join");
+  }, []);
+  const joinToken = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const hash = location.hash.replace(/^#/, "");
+    return new URLSearchParams(hash).get("k");
   }, []);
 
   const cardEls = useRef<Record<string, HTMLDivElement>>({});
@@ -174,8 +178,13 @@ export default function App() {
       } else if (p?.lastSessionId) {
         const rec = await loadSession(p.lastSessionId);
         if (rec && p.me) {
+          // Backfill joinToken for sessions persisted before this field existed.
+          // Save effect picks up the new token on next change.
+          const sess = rec.session.joinToken
+            ? rec.session
+            : { ...rec.session, joinToken: makeJoinToken() };
           setMe(p.me);
-          setSession(rec.session);
+          setSession(sess);
           setBoard(normalizeBoard(rec.board));
           if (p.me.isHost) {
             setParticipants([
@@ -233,12 +242,16 @@ export default function App() {
     peer.send(msg);
   }, []);
 
+  // Preconditions for an active peer connection. Host tears down when sharing
+  // flips off; guest stays up across sharing changes so it can resume.
+  const peerActive =
+    mode === "board" &&
+    !!me &&
+    !!session?.code &&
+    (me?.isHost ? !!session?.sharing : true);
+
   useEffect(() => {
-    if (mode !== "board") return;
-    if (!me) return;
-    // Host gates on sharing; guest always attempts so they can rejoin when host resumes.
-    if (me.isHost && !session?.sharing) return;
-    if (!me.isHost && !session?.code) return;
+    if (!peerActive || !me) return;
 
     const net = new PeerNet({
       onMessage: (msg, conn) => {
@@ -254,6 +267,16 @@ export default function App() {
         }
         if (me.isHost) {
           if (msg.type === "hello") {
+            const sess = sessionRef.current!;
+            const ok = verifyHelloToken({
+              expected: sess.joinToken,
+              provided: msg.token,
+            });
+            if (!ok) {
+              net.send({ type: "reject", reason: "bad-token" }, conn);
+              try { conn.close(); } catch {}
+              return;
+            }
             setParticipants((prev) => {
               const others = prev.filter((p) => p.id !== msg.participant.id);
               const next = [...others, msg.participant];
@@ -295,6 +318,10 @@ export default function App() {
           } else if (msg.type === "presence") {
             setParticipants(msg.participants);
             participantsRef.current = msg.participants;
+          } else if (msg.type === "reject") {
+            // Host refused us. Treat like session ended — modal explains it.
+            clearEndedTimer();
+            setShowEnded(true);
           }
         }
       },
@@ -306,31 +333,26 @@ export default function App() {
           const p: Participant = {
             id: meNow.id, name: meNow.name, color: meNow.color, initial: meNow.initial,
           };
-          net.send({ type: "hello", participant: p }, conn);
+          net.send(
+            { type: "hello", participant: p, token: joinToken ?? undefined },
+            conn,
+          );
         }
       },
-      onDisconnect: () => {
+      onState: (state) => {
         if (meRef.current?.isHost) return;
-        // Debounce: host page refresh briefly drops the conn. Only show the
-        // ended modal if we can't reconnect within a short grace period.
-        clearEndedTimer();
-        endedTimerRef.current = setTimeout(() => setShowEnded(true), 4000);
-        // Trigger immediate reconnect attempt so a fast host refresh resolves
-        // before the modal would appear.
-        setRetryTick((n) => n + 1);
+        if (state === "open") {
+          clearEndedTimer();
+          setShowEnded(false);
+        } else if (state === "reconnecting") {
+          if (!endedTimerRef.current) {
+            // Grace before surfacing the ended modal — covers host page refresh.
+            endedTimerRef.current = setTimeout(() => setShowEnded(true), 4000);
+          }
+        }
       },
       onError: (err) => {
         console.warn("peer error", err);
-        const t = (err as { type?: string }).type;
-        if (!meRef.current?.isHost && (t === "peer-unavailable" || t === "network" || t === "server-error")) {
-          // Debounce like onDisconnect — a fresh host page-load may briefly
-          // be unavailable before its peer is up again.
-          if (!endedTimerRef.current) {
-            endedTimerRef.current = setTimeout(() => setShowEnded(true), 4000);
-          }
-          // Schedule another reconnect attempt shortly.
-          setTimeout(() => setRetryTick((n) => n + 1), 1500);
-        }
       },
     });
     peerRef.current = net;
@@ -346,14 +368,7 @@ export default function App() {
       net.close();
       peerRef.current = null;
     };
-  }, [mode, session?.code, session?.sharing, me, broadcastState, retryTick]);
-
-  // While guest is in "session ended" state, retry connecting every 5s.
-  useEffect(() => {
-    if (!showEnded || !me || me.isHost) return;
-    const t = setInterval(() => setRetryTick((n) => n + 1), 5000);
-    return () => clearInterval(t);
-  }, [showEnded, me]);
+  }, [peerActive, me, session?.code, broadcastState, joinToken, clearEndedTimer]);
 
   /* ─── Board mutators ─────────────────────────────────────────────── */
   const updateBoard = useCallback(
@@ -478,6 +493,7 @@ export default function App() {
       title, code, hostName: name,
       sharing: true,
       createdAt: Date.now(),
+      joinToken: makeJoinToken(),
     };
     setMe(newMe);
     setSession(newSession);

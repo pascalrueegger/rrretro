@@ -71,6 +71,7 @@ export interface SessionInfo {
   hostPeerId?: string | null;
   sharing: boolean;
   createdAt: number;
+  joinToken?: string;
 }
 
 export interface Participant {
